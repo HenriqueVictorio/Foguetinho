@@ -5,6 +5,7 @@ import { WebSocketServer } from 'ws';
 import { v4 as uuidv4 } from 'uuid';
 import { db, createUser, getUser, updateUserBalance, setUserBalance, placeBet, cashOut, getUserBetsInRound, topUsers, loseUncashedBetsForRound } from './db.js';
 import { CrashGame } from './game.js';
+import crypto from 'crypto';
 
 const app = express();
 app.use(cors());
@@ -26,6 +27,30 @@ app.get('/', (req, res) => {
       </body>
     </html>
   `);
+});
+
+// Admin auth (simples)
+const ADMIN_USER = process.env.ADMIN_USER || 'admin';
+const ADMIN_PASS = process.env.ADMIN_PASS || 'admin123';
+const adminSessions = new Set();
+
+app.post('/api/admin/login', (req, res) => {
+  const { username, password } = req.body || {};
+  if (username === ADMIN_USER && password === ADMIN_PASS) {
+    const token = crypto.randomUUID();
+    adminSessions.add(token);
+    // expiração simples: 2h
+    setTimeout(() => adminSessions.delete(token), 2 * 60 * 60 * 1000).unref?.();
+    return res.json({ token });
+  }
+  return res.status(401).json({ error: 'Credenciais inválidas' });
+});
+
+app.get('/api/admin/validate', (req, res) => {
+  const auth = req.headers['authorization'] || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  if (token && adminSessions.has(token)) return res.json({ ok: true });
+  return res.status(401).json({ error: 'Não autorizado' });
 });
 
 const PORT = process.env.PORT || 3001;
