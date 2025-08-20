@@ -10,6 +10,24 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Root endpoint (informativo)
+app.get('/', (req, res) => {
+  res.type('html').send(`
+    <html>
+      <head><meta charset="utf-8"><title>Foguetinho API</title></head>
+      <body style="font-family:system-ui;padding:20px;">
+        <h1>Foguetinho API</h1>
+        <p>Servidor online. Use o frontend com a URL do servidor via parâmetro:</p>
+        <pre>https://SEU_FRONT/?server=${req.protocol}://${req.get('host')}</pre>
+        <p>Endpoints úteis:</p>
+        <ul>
+          <li><a href="/api/ranking">/api/ranking</a></li>
+        </ul>
+      </body>
+    </html>
+  `);
+});
+
 const PORT = process.env.PORT || 3001;
 const server = app.listen(PORT, () => {
   console.log('Server listening on port', PORT);
