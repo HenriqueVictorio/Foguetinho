@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: foguetinho-server
+    env: node
+    plan: free
+    rootDirectory: server
+    buildCommand: npm install
+    startCommand: node src/index.js
+    autoDeploy: true
+    healthCheckPath: /api/ranking

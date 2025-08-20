@@ -1,0 +1,156 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Foguetinho - Crash Game (Protótipo)</title>
+  <meta name="theme-color" content="#0b1020" />
+  <link rel="manifest" href="/manifest.json" />
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #0b1020; color: #e6e8f0; }
+      header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #0f1530; border-bottom: 1px solid #1b2448; }
+      .container { padding: 16px; max-width: 960px; margin: 0 auto; }
+      .row { display: flex; flex-wrap: wrap; gap: 16px; }
+      .card { background: #0f1530; border: 1px solid #1b2448; border-radius: 8px; padding: 12px; flex: 1; min-width: 280px; }
+      .title { font-size: 14px; opacity: .8; margin-bottom: 8px; }
+      .big { font-size: 48px; font-weight: 700; color: #7cf3a0; }
+      input, button, select { background: #0b1026; border: 1px solid #223064; color: #e6e8f0; padding: 8px 10px; border-radius: 6px; }
+      button { cursor: pointer; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border-bottom: 1px solid #1b2448; padding: 6px 8px; }
+      .success { color: #7cf3a0; }
+      .danger { color: #ff6b6b; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>Foguetinho</div>
+      <div id="userBox"></div>
+    </header>
+    <div class="container">
+      <div class="row">
+        <div class="card" style="flex:2">
+          <div class="title">Multiplicador</div>
+          <div id="mult" class="big">1.00x</div>
+          <div style="margin-top:8px">
+            <input id="betAmount" type="number" min="1" value="10" style="width:120px" />
+            <button id="betBtn">Apostar</button>
+            <button id="cashoutBtn" disabled>Sacar</button>
+          </div>
+          <div id="status" style="margin-top:8px; min-height: 24px;"></div>
+        </div>
+        <div class="card">
+          <div class="title">Ranking (Top 10)</div>
+          <table>
+            <thead>
+              <tr><th>Nome</th><th>Saldo</th></tr>
+            </thead>
+            <tbody id="ranking"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <script>
+  // Define o backend via query (?server=https://seu-backend) ou usa mesma origem (se servido via http/https)
+  const params = new URLSearchParams(location.search);
+  const defaultBase = location.protocol.startsWith('http') ? `${location.protocol}//${location.host}` : 'http://localhost:3001';
+  const apiBase = (params.get('server') || defaultBase).replace(/\/+$/,'');
+      let user = null;
+      let ws = null;
+      let currentBetId = null;
+
+      async function signup() {
+        const name = localStorage.getItem('foguetinho_name') || prompt('Seu nome:');
+        localStorage.setItem('foguetinho_name', name);
+        const res = await fetch(apiBase + '/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        user = await res.json();
+        document.getElementById('userBox').textContent = `${user.name} — Saldo: ${user.balance}`;
+        refreshRanking();
+      }
+
+      async function refreshRanking() {
+        const res = await fetch(apiBase + '/api/ranking');
+        const list = await res.json();
+        const tbody = document.getElementById('ranking');
+        tbody.innerHTML = '';
+        list.slice(0,10).forEach(u => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${u.name}</td><td>${u.balance}</td>`;
+          tbody.appendChild(tr);
+        });
+      }
+
+      function connectWS() {
+        const wsProto = apiBase.startsWith('https') ? 'wss' : 'ws';
+        const wsHost = apiBase.replace(/^https?:\/\//, '');
+        ws = new WebSocket(`${wsProto}://${wsHost}`);
+        ws.onmessage = (ev) => {
+          const msg = JSON.parse(ev.data);
+          if (msg.type === 'tick') {
+            document.getElementById('mult').textContent = msg.multiplier.toFixed(2) + 'x';
+          } else if (msg.type === 'round_end') {
+            document.getElementById('status').textContent = `Rodada acabou em ${msg.crashAt.toFixed(2)}x`;
+            document.getElementById('cashoutBtn').disabled = true;
+            currentBetId = null;
+            refreshRanking();
+          } else if (msg.type === 'bet_placed') {
+            if (msg.userId === user.id) {
+              document.getElementById('status').textContent = `Apostou ${msg.amount}`;
+              document.getElementById('cashoutBtn').disabled = false;
+              user.balance -= msg.amount;
+              document.getElementById('userBox').textContent = `${user.name} — Saldo: ${user.balance}`;
+            }
+          } else if (msg.type === 'cashout') {
+            if (msg.userId === user.id) {
+              document.getElementById('status').textContent = `Sacou em ${msg.atMultiplier.toFixed(2)}x ( +${msg.payout} )`;
+              user.balance = msg.balance;
+              document.getElementById('userBox').textContent = `${user.name} — Saldo: ${user.balance}`;
+              document.getElementById('cashoutBtn').disabled = true;
+              currentBetId = null;
+            }
+            refreshRanking();
+          }
+        };
+        ws.onopen = () => console.log('WS connected');
+        ws.onclose = () => setTimeout(connectWS, 1000);
+      }
+
+      async function placeBet() {
+        const amount = parseInt(document.getElementById('betAmount').value, 10);
+        const res = await fetch(apiBase + '/api/bet', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, amount })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          currentBetId = data.betId;
+          user.balance = data.newBalance;
+          document.getElementById('userBox').textContent = `${user.name} — Saldo: ${user.balance}`;
+        } else {
+          alert(data.error || 'Erro');
+        }
+      }
+
+      async function cashout() {
+        if (!currentBetId) return;
+        const multText = document.getElementById('mult').textContent;
+        const atMultiplier = parseFloat(multText);
+        const res = await fetch(apiBase + '/api/cashout', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id, betId: currentBetId, atMultiplier })
+        });
+        const data = await res.json();
+        if (!res.ok) alert(data.error || 'Erro ao sacar');
+      }
+
+      document.getElementById('betBtn').addEventListener('click', placeBet);
+      document.getElementById('cashoutBtn').addEventListener('click', cashout);
+
+      signup().then(() => { connectWS(); setInterval(refreshRanking, 5000); });
+
+      // Registra Service Worker para tornar PWA instalável (requer HTTPS ou localhost)
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(console.error);
+      }
+    </script>
+  </body>
+</html>
