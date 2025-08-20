@@ -25,7 +25,11 @@
   <body>
     <header>
       <div>Foguetinho</div>
-      <div id="userBox"></div>
+      <div style="display:flex; gap:12px; align-items:center">
+        <div id="serverBox" style="font-size:12px; opacity:.8"></div>
+        <div id="userBox"></div>
+        <button id="changeServerBtn" style="font-size:12px">Trocar servidor</button>
+      </div>
     </header>
     <div class="container">
       <div class="row">
@@ -52,10 +56,27 @@
     </div>
 
     <script>
-  // Define o backend via query (?server=https://seu-backend) ou usa mesma origem (se servido via http/https)
-  const params = new URLSearchParams(location.search);
-  const defaultBase = location.protocol.startsWith('http') ? `${location.protocol}//${location.host}` : 'http://localhost:3001';
-  const apiBase = (params.get('server') || defaultBase).replace(/\/+$/,'');
+      // Define o backend por: ?server= | localStorage | mesma origem | localhost
+      const params = new URLSearchParams(location.search);
+      const defaultBase = location.protocol.startsWith('http') ? `${location.protocol}//${location.host}` : 'http://localhost:3001';
+      const savedBase = localStorage.getItem('foguetinho_server');
+      const apiBase = (params.get('server') || savedBase || defaultBase).replace(/\/+$/,'');
+      if (params.get('server')) localStorage.setItem('foguetinho_server', apiBase);
+
+      function showServer() {
+        const el = document.getElementById('serverBox');
+        if (el) el.textContent = `Servidor: ${apiBase}`;
+      }
+
+      function changeServer() {
+        const val = prompt('URL do servidor (ex: https://foguetinho-1.onrender.com):', apiBase);
+        if (!val) return;
+        const cleaned = val.replace(/\/+$/,'');
+        localStorage.setItem('foguetinho_server', cleaned);
+        const url = new URL(location.href);
+        url.searchParams.set('server', cleaned);
+        location.href = url.toString();
+      }
       let user = null;
       let ws = null;
       let currentBetId = null;
@@ -142,10 +163,12 @@
         if (!res.ok) alert(data.error || 'Erro ao sacar');
       }
 
-      document.getElementById('betBtn').addEventListener('click', placeBet);
-      document.getElementById('cashoutBtn').addEventListener('click', cashout);
+  document.getElementById('betBtn').addEventListener('click', placeBet);
+  document.getElementById('cashoutBtn').addEventListener('click', cashout);
+  document.getElementById('changeServerBtn').addEventListener('click', changeServer);
 
-      signup().then(() => { connectWS(); setInterval(refreshRanking, 5000); });
+  showServer();
+  signup().then(() => { connectWS(); setInterval(refreshRanking, 5000); });
 
       // Registra Service Worker para tornar PWA instalável (requer HTTPS ou localhost)
       if ('serviceWorker' in navigator) {
