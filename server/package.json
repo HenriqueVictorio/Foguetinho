@@ -3,9 +3,13 @@
   "version": "0.1.0",
   "type": "module",
   "main": "src/index.js",
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "node src/index.js",
-    "migrate": "node src/migrate.js"
+    "migrate": "node src/migrate.js",
+    "postinstall": "npm rebuild better-sqlite3 || echo skip"
   },
   "dependencies": {
     "better-sqlite3": "^9.4.3",
