@@ -1,0 +1,15 @@
+# Node
+node_modules/
+client/node_modules/
+server/node_modules/
+npm-debug.log*
+yarn.lock
+package-lock.json
+
+# Env
+.env
+server/.env
+
+# Output
+.vercel/
+.render/
