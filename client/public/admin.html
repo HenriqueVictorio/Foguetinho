@@ -1,0 +1,180 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Foguetinho - Admin Simulator</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; background: #0b1020; color: #e6e8f0; }
+      header { padding: 12px 16px; background: #0f1530; border-bottom: 1px solid #1b2448; display:flex;justify-content:space-between;align-items:center; }
+      .container { padding: 16px; max-width: 960px; margin: 0 auto; }
+      input, button { background: #0b1026; border: 1px solid #223064; color: #e6e8f0; padding: 8px 10px; border-radius: 6px; }
+      button { cursor: pointer; }
+      .row { display:flex; gap:12px; align-items:center; flex-wrap: wrap; }
+      .card { background: #0f1530; border: 1px solid #1b2448; border-radius: 8px; padding: 12px; }
+      pre { background:#0b1026; padding:8px; border-radius:6px; overflow:auto; }
+      .muted { opacity:.8; font-size:12px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>Foguetinho — Admin</div>
+      <div id="status" class="muted"></div>
+    </header>
+    <div class="container">
+      <div class="card">
+        <div class="row">
+          <input id="server" style="min-width:360px" placeholder="https://seu-backend.onrender.com" />
+          <input id="user" placeholder="admin" />
+          <input id="pass" placeholder="admin123" type="password" />
+          <button id="loginBtn">Login</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <div class="row">
+          <input id="nClients" type="number" value="50" min="1" max="500" />
+          <button id="startBtn" disabled>Iniciar simulação</button>
+          <button id="stopBtn" disabled>Parar</button>
+          <span class="muted">Simula conexões WebSocket + apostas aleatórias.</span>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px">
+        <div class="row">
+          <div>Conectados: <span id="connected">0</span></div>
+          <div>Erros: <span id="errors">0</span></div>
+        </div>
+        <pre id="log" style="margin-top:8px; height:260px"></pre>
+      </div>
+    </div>
+
+    <script>
+      const els = {
+        server: document.getElementById('server'),
+        user: document.getElementById('user'),
+        pass: document.getElementById('pass'),
+        loginBtn: document.getElementById('loginBtn'),
+        startBtn: document.getElementById('startBtn'),
+        stopBtn: document.getElementById('stopBtn'),
+        nClients: document.getElementById('nClients'),
+        connected: document.getElementById('connected'),
+        errors: document.getElementById('errors'),
+        log: document.getElementById('log'),
+        status: document.getElementById('status'),
+      };
+
+  let token = null;
+  let bots = [];
+  let timers = [];
+
+      function log(msg) {
+        const t = new Date().toLocaleTimeString();
+        els.log.textContent += `[${t}] ${msg}\n`;
+        els.log.scrollTop = els.log.scrollHeight;
+      }
+
+      async function login() {
+        const base = els.server.value.replace(/\/+$/,'');
+        const res = await fetch(base + '/api/admin/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: els.user.value, password: els.pass.value }) });
+        const data = await res.json();
+        if (!res.ok) { alert(data.error || 'Falha no login'); return; }
+        token = data.token;
+        els.status.textContent = 'Logado';
+        els.startBtn.disabled = false;
+        log('Admin logado');
+      }
+
+      function wsUrlFromHttp(base) {
+        const proto = base.startsWith('https') ? 'wss' : 'ws';
+        const host = base.replace(/^https?:\/\//, '');
+        return `${proto}://${host}`;
+      }
+
+      async function startSim() {
+        if (!token) return alert('Faça login primeiro');
+        const base = els.server.value.replace(/\/+$/,'');
+        const wsUrl = wsUrlFromHttp(base);
+        const N = parseInt(els.nClients.value, 10);
+        let connected = 0, errors = 0;
+        els.connected.textContent = connected;
+        els.errors.textContent = errors;
+
+        function update() {
+          els.connected.textContent = connected;
+          els.errors.textContent = errors;
+        }
+
+        for (let i = 0; i < N; i++) {
+          // 1) signup com nome único
+          const name = `bot_${Math.random().toString(36).slice(2,8)}`;
+          try {
+            const r = await fetch(base + '/api/signup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+            const u = await r.json();
+            if (!r.ok) throw new Error(u.error || 'signup falhou');
+            const uid = u.id;
+
+            const bot = { uid, ws: null, currentBetId: null };
+            const ws = new WebSocket(wsUrl);
+            bot.ws = ws;
+            ws.onopen = () => { connected++; update(); };
+            ws.onclose = () => { connected = Math.max(0, connected - 1); update(); };
+            ws.onerror = () => { errors++; update(); };
+            ws.onmessage = async (ev) => {
+              try {
+                const m = JSON.parse(ev.data);
+                if (m.type === 'tick') {
+                  // Se não tem aposta ativa, chance pequena de apostar
+                  if (!bot.currentBetId && Math.random() < 0.02) {
+                    const amount = 5 + Math.floor(Math.random()*20);
+                    try {
+                      const resp = await fetch(base + '/api/bet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: bot.uid, amount }) });
+                      const data = await resp.json();
+                      if (resp.ok) bot.currentBetId = data.betId;
+                    } catch {}
+                  }
+                  // Se tem aposta ativa, chance de sacar
+                  if (bot.currentBetId && Math.random() < 0.03) {
+                    const mult = m.multiplier;
+                    try {
+                      const resp = await fetch(base + '/api/cashout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: bot.uid, betId: bot.currentBetId, atMultiplier: mult }) });
+                      if (resp.ok) bot.currentBetId = null;
+                    } catch {}
+                  }
+                } else if (m.type === 'round_end') {
+                  // rodada acabou, nenhuma aposta pendente permanece válida
+                  bot.currentBetId = null;
+                }
+              } catch {}
+            };
+            bots.push(bot);
+
+            // limpa bots após 10-15 min
+      const t = setTimeout(() => { try { ws.close(); } catch {} }, (10 + Math.random()*5) * 60 * 1000);
+            timers.push(t);
+          } catch (e) {
+            errors++; update(); log('Erro bot: ' + e.message);
+          }
+        }
+        els.stopBtn.disabled = false;
+        log(`Iniciada simulação com ${N} bots`);
+      }
+
+      function stopSim() {
+    bots.forEach(b => { try { b.ws?.close(); } catch {} });
+        timers.forEach(t => clearTimeout(t));
+    bots = [];
+        timers = [];
+        log('Simulação parada');
+      }
+
+      els.loginBtn.addEventListener('click', login);
+      els.startBtn.addEventListener('click', startSim);
+      els.stopBtn.addEventListener('click', stopSim);
+
+      // Prefill servidor se vier por query
+      const p = new URLSearchParams(location.search);
+      if (p.get('server')) els.server.value = p.get('server');
+    </script>
+  </body>
+</html>
