@@ -100,13 +100,32 @@
       let nextStartAt = null;
       const cvs = document.getElementById('chart');
       const ctx = cvs.getContext('2d');
+      // Offscreen para grade; reduz redesenhos custosos
+      const gridCanvas = document.createElement('canvas');
+      const gridCtx = gridCanvas.getContext('2d');
+      let lastGridWindowSec = null;
+      let lastGridMaxM = null;
+      let dpr = Math.min(2, window.devicePixelRatio || 1);
+
       let roundStart = performance.now();
       let lastTick = { t: 0, m: 1 };
       let currTick = { t: 0, m: 1 };
       let currTickTime = performance.now();
       let pathPoints = []; // pontos confirmados por tick
-  let crashed = false;
-  // A largura horizontal passa a ajustar dinamicamente conforme o tempo de rodada
+      let crashed = false;
+      // A largura horizontal passa a ajustar dinamicamente conforme o tempo de rodada
+
+      function setupCanvas() {
+        const rect = cvs.getBoundingClientRect();
+        dpr = Math.min(2, window.devicePixelRatio || 1);
+        // evita canvas gigantes: limita DPR a 2
+        cvs.width = Math.max(320, Math.floor(rect.width * dpr));
+        cvs.height = Math.floor(200 * dpr);
+        gridCanvas.width = cvs.width;
+        gridCanvas.height = cvs.height;
+        lastGridWindowSec = null;
+        lastGridMaxM = null;
+      }
 
       function resetRound() {
         roundStart = performance.now();
@@ -123,88 +142,100 @@
         currTick = { t, m: mult };
         currTickTime = performance.now();
         pathPoints.push(currTick);
-        if (pathPoints.length > 2000) pathPoints.shift();
+  if (pathPoints.length > 800) pathPoints.shift();
+      }
+
+      function drawGrid(windowSec, maxM) {
+        const w = gridCanvas.width, h = gridCanvas.height;
+        const g = gridCtx;
+        g.clearRect(0,0,w,h);
+        // eixos
+        g.strokeStyle = '#223064';
+        g.lineWidth = 1 * dpr;
+        g.beginPath();
+        g.moveTo(40*dpr, h-20*dpr); g.lineTo(w-10*dpr, h-20*dpr);
+        g.moveTo(40*dpr, h-20*dpr); g.lineTo(40*dpr, 10*dpr);
+        g.stroke();
+        // funções de mapeamento p/ grid
+        function y(m){ const denom = Math.max(1, (maxM-1)); return (h-20*dpr) - (h-40*dpr) * (m-1) / denom; }
+        function x(t){ return 40*dpr + (w-60*dpr) * (t / windowSec); }
+        // grades Y em potências de 2
+        g.strokeStyle = '#1b2448';
+        g.fillStyle = '#7a86b6';
+        g.font = `${11*dpr}px system-ui`;
+        for (let m=1; m<=maxM; m*=2) {
+          const yy = y(m);
+          g.beginPath(); g.moveTo(40*dpr, yy); g.lineTo(w-10*dpr, yy); g.stroke();
+          g.save(); g.scale(dpr, dpr);
+          g.fillText('x'+m.toFixed(0), 8, Math.max(12, yy/dpr-2));
+          g.restore();
+        }
+        // grades X a cada 10s
+        for (let t=0; t<=windowSec; t+=10) {
+          const xx = x(t);
+          g.beginPath(); g.moveTo(xx, h-20*dpr); g.lineTo(xx, 10*dpr); g.stroke();
+          g.save(); g.scale(dpr, dpr);
+          g.fillText(t+'s', Math.max(42, xx/dpr-8), h/dpr-6);
+          g.restore();
+        }
       }
 
       function render() {
         const w = cvs.width, h = cvs.height;
         ctx.clearRect(0,0,w,h);
-        // eixos
-        ctx.strokeStyle = '#223064';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(40, h-20); ctx.lineTo(w-10, h-20); ctx.moveTo(40, h-20); ctx.lineTo(40, 10);
-        function render() {
-
-        // escala
-          // escala dinâmica
-          const now = performance.now();
-          const alpha = Math.min(1, (now - currTickTime) / 100); // interpola entre ticks (100ms)
-          const tipT = lastTick.t + (currTick.t - lastTick.t) * alpha;
-          const tipM = lastTick.m + (currTick.m - lastTick.m) * alpha;
-
-          // janela em segundos: múltiplos de 10s (0,10,20,30...), no mínimo 10s
-          const lastT = pathPoints.length ? pathPoints[pathPoints.length-1].t : 0;
-          const tRef = Math.max(tipT, lastT);
-          const windowSec = Math.min(60, Math.max(10, Math.ceil(tRef / 10) * 10));
-
-          // Y máximo: potências de 2 para lembrar o gráfico exponencial (x1,x2,x4,x8...)
-          const rawMaxM = Math.max(2, ...pathPoints.map(p=>p.m), tipM);
-          let pow = 1;
-          while (pow * 2 < rawMaxM) pow *= 2; // maior potência de 2 abaixo de rawMaxM
-          const maxM = Math.max(2, pow * 2); // próxima potência para dar folga
-
-          // eixos
-          ctx.strokeStyle = '#223064';
-          ctx.lineWidth = 1;
+        // posição da ponta (interpola entre ticks)
+        const now = performance.now();
+        const alpha = Math.min(1, (now - currTickTime) / 100);
+        const tipT = lastTick.t + (currTick.t - lastTick.t) * alpha;
+        const tipM = lastTick.m + (currTick.m - lastTick.m) * alpha;
+        // janela dinâmica (10s..60s)
+        const lastT = pathPoints.length ? pathPoints[pathPoints.length-1].t : 0;
+        const tRef = Math.max(tipT, lastT);
+        const windowSec = Math.min(60, Math.max(10, Math.ceil(tRef / 10) * 10));
+        // Y em potências de 2
+        const rawMaxM = Math.max(2, ...pathPoints.map(p=>p.m), tipM);
+        let pow = 1; while (pow * 2 < rawMaxM) pow *= 2;
+        const maxM = Math.max(2, pow * 2);
+        // redesenha grade só quando necessário
+        if (lastGridWindowSec !== windowSec || lastGridMaxM !== maxM) {
+          drawGrid(windowSec, maxM);
+          lastGridWindowSec = windowSec; lastGridMaxM = maxM;
+        }
+        ctx.drawImage(gridCanvas, 0, 0);
+        // funções de mapeamento
+        function x(t){ return 40*dpr + (w-60*dpr) * (t / windowSec); }
+        function y(m){ const denom = Math.max(1, (maxM-1)); return (h-20*dpr) - (h-40*dpr) * (m-1) / denom; }
+        // pontos + decimação para limitar custo no mobile
+        const pts = [...pathPoints, { t: tipT, m: tipM }];
+        const maxSeg = 400; const step = Math.max(1, Math.ceil(pts.length / maxSeg));
+        if (pts.length > 1) {
+          ctx.strokeStyle = crashed ? '#ff6b6b' : '#ff5277';
+          ctx.lineWidth = 2 * dpr;
+          ctx.lineJoin = 'round'; ctx.lineCap = 'round';
           ctx.beginPath();
-          ctx.moveTo(40, h-20); ctx.lineTo(w-10, h-20); // eixo X
-          ctx.moveTo(40, h-20); ctx.lineTo(40, 10);     // eixo Y
-          ctx.stroke();
-
-          // grades Y em potências de 2
-          ctx.strokeStyle = '#1b2448';
-          ctx.fillStyle = '#7a86b6';
-          ctx.font = '11px system-ui';
-          for (let m=1; m<=maxM; m*=2) {
-            const yy = y(m);
-            ctx.beginPath();
-            ctx.moveTo(40, yy); ctx.lineTo(w-10, yy);
-            ctx.stroke();
-            ctx.fillText('x'+m.toFixed(0), 8, Math.max(12, yy-2));
-          }
-
-          // grades X a cada 10s
-          for (let t=0; t<=windowSec; t+=10) {
-            const xx = x(t);
-            ctx.beginPath(); ctx.moveTo(xx, h-20); ctx.lineTo(xx, 10); ctx.stroke();
-            ctx.fillText(t+'s', Math.max(42, xx-8), h-6);
-          }
-          function x(t){ return 40 + (w-60) * (t / windowSec); }
-          function y(m){ const denom = Math.max(1, (maxM-1)); return (h-20) - (h-40) * (m-1) / denom; }
           ctx.moveTo(x(pts[0].t), y(pts[0].m));
-          for (let i=1;i<pts.length;i++) ctx.lineTo(x(pts[i].t), y(pts[i].m));
+          for (let i=1;i<pts.length;i+=step) ctx.lineTo(x(pts[i].t), y(pts[i].m));
+          const last = pts[pts.length-1];
+          ctx.lineTo(x(last.t), y(last.m));
           ctx.stroke();
 
-            ctx.strokeStyle = crashed ? '#ff6b6b' : '#ff5277';
-          const xf = x(pts[pts.length-1].t);
-          const yf = y(pts[pts.length-1].m);
-          ctx.fillStyle = crashed ? '#ff6b6b' : '#7cf3a0';
-          ctx.beginPath(); ctx.arc(xf, yf, 3, 0, Math.PI*2); ctx.fill();
-          ctx.fillStyle = '#e6e8f0';
-          ctx.font = '12px system-ui';
-          ctx.fillText(`${tipM.toFixed(2)}x`, Math.min(w-50, xf+6), Math.max(12, yf-6));
+          // ponta e label
+          const xf = x(last.t), yf = y(last.m);
+          ctx.fillStyle = crashed ? '#ff6b6b' : '#ff5277';
+          ctx.beginPath(); ctx.arc(xf, yf, 3*dpr, 0, Math.PI*2); ctx.fill();
+          ctx.save(); ctx.scale(dpr, dpr);
+          ctx.fillStyle = '#e6e8f0'; ctx.font = '12px system-ui';
+          ctx.fillText(`${tipM.toFixed(2)}x`, Math.min(w/dpr-50, xf/dpr+6), Math.max(12, yf/dpr-6));
+          ctx.restore();
 
-          // “quebra” no crash
           if (crashed) {
             ctx.strokeStyle = '#ff6b6b';
-            ctx.fillStyle = crashed ? '#ff6b6b' : '#ff5277';
-            ctx.moveTo(xf-8, yf-8); ctx.lineTo(xf+8, yf+8);
-            ctx.moveTo(xf-8, yf+8); ctx.lineTo(xf+8, yf-8);
+            ctx.beginPath();
+            ctx.moveTo(xf-8*dpr, yf-8*dpr); ctx.lineTo(xf+8*dpr, yf+8*dpr);
+            ctx.moveTo(xf-8*dpr, yf+8*dpr); ctx.lineTo(xf+8*dpr, yf-8*dpr);
             ctx.stroke();
           }
         }
-
         requestAnimationFrame(render);
       }
 
@@ -272,12 +303,12 @@
       }
       function startCountdown() {
         const el = document.getElementById('countdown');
-        const timer = setInterval(() => {
+  const timer = setInterval(() => {
           const ms = Math.max(0, nextStartAt - Date.now());
           const s = Math.ceil(ms/1000);
           el.textContent = s > 0 ? `Próxima rodada em ${s}s` : '';
           if (ms <= 0) { clearInterval(timer); el.textContent = ''; }
-        }, 200);
+  }, 500);
       }
 
       async function placeBet() {
@@ -324,6 +355,10 @@
       });
 
   showServer();
+  // configurar canvas responsivo
+  function _resize() { setupCanvas(); }
+  window.addEventListener('resize', () => { clearTimeout(window.__rTo); window.__rTo = setTimeout(_resize, 150); });
+  _resize();
   signup().then(() => { connectWS(); setInterval(refreshRanking, 5000); setInterval(refreshOnline, 5000); refreshOnline(); requestAnimationFrame(render); });
 
       // Registra Service Worker para tornar PWA instalável (requer HTTPS ou localhost)
