@@ -41,6 +41,7 @@
             <input id="betAmount" type="number" min="1" value="10" style="width:120px" />
             <button id="betBtn">Apostar</button>
             <button id="cashoutBtn" disabled>Sacar</button>
+            <button id="resetBtn" title="Reseta seu saldo para 10">Resetar saldo</button>
           </div>
           <div id="status" style="margin-top:8px; min-height: 24px;"></div>
         </div>
@@ -178,6 +179,19 @@
   document.getElementById('betBtn').addEventListener('click', placeBet);
   document.getElementById('cashoutBtn').addEventListener('click', cashout);
   document.getElementById('changeServerBtn').addEventListener('click', changeServer);
+      document.getElementById('resetBtn').addEventListener('click', async () => {
+        if (!user?.id) return;
+        const res = await fetch(apiBase + '/api/reset-balance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ userId: user.id }) });
+        const data = await res.json();
+        if (res.ok) {
+          user.balance = data.balance;
+          document.getElementById('userBox').textContent = `${user.name} — Saldo: ${user.balance}`;
+          refreshRanking();
+          document.getElementById('status').textContent = 'Saldo resetado para 10';
+        } else {
+          alert(data.error || 'Erro ao resetar saldo');
+        }
+      });
 
   showServer();
   signup().then(() => { connectWS(); setInterval(refreshRanking, 5000); setInterval(refreshOnline, 5000); refreshOnline(); });
