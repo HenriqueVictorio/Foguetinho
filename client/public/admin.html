@@ -24,9 +24,9 @@
     <div class="container">
       <div class="card">
         <div class="row">
-          <input id="server" style="min-width:360px" placeholder="https://seu-backend.onrender.com" />
-          <input id="user" placeholder="admin" />
-          <input id="pass" placeholder="admin123" type="password" />
+          <input id="server" style="min-width:360px" placeholder="Servidor (ex: https://seu-backend)" />
+          <input id="user" placeholder="Usuário" />
+          <input id="pass" placeholder="Senha" type="password" />
           <button id="loginBtn">Login</button>
         </div>
       </div>
@@ -36,6 +36,9 @@
           <input id="nClients" type="number" value="50" min="1" max="500" />
           <button id="startBtn" disabled>Iniciar simulação</button>
           <button id="stopBtn" disabled>Parar</button>
+          <button id="modeAutoBtn" disabled>Automático</button>
+          <button id="modeManualBtn" disabled>Manual</button>
+          <button id="forceCrashBtn" disabled>Forçar crash</button>
           <span class="muted">Simula conexões WebSocket + apostas aleatórias.</span>
         </div>
       </div>
@@ -44,6 +47,7 @@
         <div class="row">
           <div>Conectados: <span id="connected">0</span></div>
           <div>Erros: <span id="errors">0</span></div>
+          <div>Online (API): <span id="online">0</span></div>
         </div>
         <pre id="log" style="margin-top:8px; height:260px"></pre>
       </div>
@@ -82,6 +86,9 @@
         token = data.token;
         els.status.textContent = 'Logado';
         els.startBtn.disabled = false;
+        els.modeAutoBtn.disabled = false;
+        els.modeManualBtn.disabled = false;
+        els.forceCrashBtn.disabled = false;
         log('Admin logado');
       }
 
@@ -168,13 +175,40 @@
         log('Simulação parada');
       }
 
-      els.loginBtn.addEventListener('click', login);
+      async function setMode(mode) {
+        if (!token) return;
+        const base = els.server.value.replace(/\/+$/,'');
+        const res = await fetch(base + '/api/admin/mode', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token }, body: JSON.stringify({ mode }) });
+        if (res.ok) log('Modo: ' + mode); else log('Erro ao mudar modo');
+      }
+
+      async function forceCrash() {
+        if (!token) return;
+        const base = els.server.value.replace(/\/+$/,'');
+        const res = await fetch(base + '/api/admin/force-crash', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } });
+        if (res.ok) log('Crash forçado'); else log('Erro ao forçar crash');
+      }
+
+      async function refreshOnline() {
+        const base = els.server.value.replace(/\/+$/,'');
+        try {
+          const r = await fetch(base + '/api/online');
+          const d = await r.json();
+          if (r.ok) document.getElementById('online').textContent = d.online;
+        } catch {}
+      }
+
+  els.loginBtn.addEventListener('click', login);
       els.startBtn.addEventListener('click', startSim);
       els.stopBtn.addEventListener('click', stopSim);
+  document.getElementById('modeAutoBtn').addEventListener('click', () => setMode('auto'));
+  document.getElementById('modeManualBtn').addEventListener('click', () => setMode('manual'));
+  document.getElementById('forceCrashBtn').addEventListener('click', forceCrash);
 
       // Prefill servidor se vier por query
       const p = new URLSearchParams(location.search);
-      if (p.get('server')) els.server.value = p.get('server');
+  if (p.get('server')) els.server.value = p.get('server');
+  setInterval(refreshOnline, 3000);
     </script>
   </body>
 </html>
