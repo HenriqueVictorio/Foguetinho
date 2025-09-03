@@ -16,6 +16,8 @@
       .big { font-size: 48px; font-weight: 700; color: #7cf3a0; }
       input, button, select { background: #0b1026; border: 1px solid #223064; color: #e6e8f0; padding: 8px 10px; border-radius: 6px; }
       button { cursor: pointer; }
+  .btn { transition: transform .06s ease, box-shadow .06s ease; }
+  .btn:active { transform: scale(0.98); box-shadow: 0 0 0 2px rgba(124,243,160,.2) inset; }
       table { width: 100%; border-collapse: collapse; }
       th, td { border-bottom: 1px solid #1b2448; padding: 6px 8px; }
       .success { color: #7cf3a0; }
@@ -38,10 +40,10 @@
           <div class="title">Multiplicador</div>
           <div id="mult" class="big">1.00x</div>
           <div style="margin-top:8px">
-            <input id="betAmount" type="number" min="1" value="10" style="width:120px" />
-            <button id="betBtn">Apostar</button>
-            <button id="cashoutBtn" disabled>Sacar</button>
-            <button id="resetBtn" title="Reseta seu saldo para 10">Resetar saldo</button>
+            <input id="betAmount" type="number" min="1" value="10" style="width:120px" aria-label="Valor da aposta" />
+            <button id="betBtn" class="btn">Apostar</button>
+            <button id="cashoutBtn" disabled class="btn">Sacar</button>
+            <button id="resetBtn" class="btn" title="Reseta seu saldo para 10">Resetar saldo</button>
           </div>
           <div id="status" style="margin-top:8px; min-height: 24px;"></div>
         </div>
