@@ -39,6 +39,8 @@
         <div class="card" style="flex:2">
           <div class="title">Multiplicador</div>
           <div id="mult" class="big">1.00x</div>
+          <canvas id="chart" width="600" height="180" style="width:100%; max-width: 100%; background:#0b1026; border-radius:6px; border:1px solid #1b2448"></canvas>
+          <div id="countdown" class="muted"></div>
           <div style="margin-top:8px">
             <input id="betAmount" type="number" min="1" value="10" style="width:120px" aria-label="Valor da aposta" />
             <button id="betBtn" class="btn">Apostar</button>
@@ -95,6 +97,52 @@
       let user = null;
       let ws = null;
       let currentBetId = null;
+      let nextStartAt = null;
+      let points = [];
+      const cvs = document.getElementById('chart');
+      const ctx = cvs.getContext('2d');
+
+      function drawChart(multiplier, crashed = false) {
+        // guarda pontos (cap em 1000)
+        const t = Date.now();
+        points.push({ t, m: multiplier });
+        if (points.length > 1000) points.shift();
+
+        const w = cvs.width, h = cvs.height;
+        ctx.clearRect(0,0,w,h);
+        // eixos simples
+        ctx.strokeStyle = '#223064';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(40, h-20); ctx.lineTo(w-10, h-20); ctx.moveTo(40, h-20); ctx.lineTo(40, 10);
+        ctx.stroke();
+
+        if (points.length < 2) return;
+        const t0 = points[0].t;
+        const t1 = points[points.length-1].t;
+        const maxM = Math.max(2, ...points.map(p=>p.m));
+        function x(t){ return 40 + (w-60) * (t - t0) / Math.max(1, t1 - t0); }
+        function y(m){ return (h-20) - (h-40) * (m-1) / (maxM-1); }
+
+        // linha do multiplicador
+        ctx.strokeStyle = crashed ? '#ff6b6b' : '#7cf3a0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x(points[0].t), y(points[0].m));
+        for (let i=1;i<points.length;i++) ctx.lineTo(x(points[i].t), y(points[i].m));
+        ctx.stroke();
+
+        // se crash, desenha "quebra"
+        if (crashed) {
+          const xf = x(points[points.length-1].t);
+          const yf = y(points[points.length-1].m);
+          ctx.strokeStyle = '#ff6b6b';
+          ctx.beginPath();
+          ctx.moveTo(xf-8, yf-8); ctx.lineTo(xf+8, yf+8);
+          ctx.moveTo(xf-8, yf+8); ctx.lineTo(xf+8, yf-8);
+          ctx.stroke();
+        }
+      }
 
       async function signup() {
         const name = localStorage.getItem('foguetinho_name') || prompt('Seu nome:');
@@ -125,11 +173,16 @@
           const msg = JSON.parse(ev.data);
           if (msg.type === 'tick') {
             document.getElementById('mult').textContent = msg.multiplier.toFixed(2) + 'x';
+            drawChart(msg.multiplier, false);
           } else if (msg.type === 'round_end') {
             document.getElementById('status').textContent = `Rodada acabou em ${msg.crashAt.toFixed(2)}x`;
             document.getElementById('cashoutBtn').disabled = true;
             currentBetId = null;
             refreshRanking();
+            drawChart(msg.crashAt, true);
+            points = []; // zera para próxima rodada
+            nextStartAt = msg.nextStartAt || null;
+            if (nextStartAt) startCountdown();
           } else if (msg.type === 'bet_placed') {
             if (msg.userId === user.id) {
               document.getElementById('status').textContent = `Apostou ${msg.amount}`;
@@ -150,6 +203,15 @@
         };
         ws.onopen = () => console.log('WS connected');
         ws.onclose = () => setTimeout(connectWS, 1000);
+      }
+      function startCountdown() {
+        const el = document.getElementById('countdown');
+        const timer = setInterval(() => {
+          const ms = Math.max(0, nextStartAt - Date.now());
+          const s = Math.ceil(ms/1000);
+          el.textContent = s > 0 ? `Próxima rodada em ${s}s` : '';
+          if (ms <= 0) { clearInterval(timer); el.textContent = ''; }
+        }, 200);
       }
 
       async function placeBet() {

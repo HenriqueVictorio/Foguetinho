@@ -69,8 +69,10 @@ export class CrashGame {
         clearInterval(this.timer);
         const endTime = new Date().toISOString();
         endRound({ id: this.currentRoundId, end_time: endTime, crash_multiplier: finalMultiplier });
-        this.onRoundEnd?.({ roundId: this.currentRoundId, endTime, crashAt: finalMultiplier });
-        setTimeout(() => this._startNewRound(), 1000);
+        const nextDelay = 10000; // 10s pausa entre rodadas
+        const nextStartAt = Date.now() + nextDelay;
+        this.onRoundEnd?.({ roundId: this.currentRoundId, endTime, crashAt: finalMultiplier, nextStartAt });
+        setTimeout(() => this._startNewRound(), nextDelay);
       } else {
         this.onTick?.({ roundId: this.currentRoundId, multiplier: this.currentMultiplier, crashAt: this.crashAt });
       }
