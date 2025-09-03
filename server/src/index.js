@@ -173,6 +173,18 @@ app.post('/api/cashout', (req, res) => {
   res.json({ payout, balance: getUser(userId).balance });
 });
 
+// Resetar saldo de um usuário para 10 (pedido do protótipo)
+app.post('/api/reset-balance', (req, res) => {
+  const { userId } = req.body || {};
+  if (!userId) return res.status(400).json({ error: 'Dados inválidos' });
+  const user = getUser(userId);
+  if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+  setUserBalance(userId, 10);
+  const updated = getUser(userId);
+  broadcast({ type: 'balance_reset', userId, balance: updated.balance });
+  res.json({ balance: updated.balance });
+});
+
 // WebSocket connections: can subscribe to ticks
 wss.on('connection', (ws) => {
   ws.send(JSON.stringify({ type: 'hello', roundId: game.currentRoundId }));
