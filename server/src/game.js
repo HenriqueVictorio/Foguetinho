@@ -2,8 +2,9 @@ import { v4 as uuidv4 } from 'uuid';
 import { createRound, endRound } from './db.js';
 
 export class CrashGame {
-  constructor({ tickMs = 100, roundDurationMs = 10000, onTick, onRoundStart, onRoundEnd }) {
+  constructor({ tickMs = 100, roundDurationMs = 10000, onTick, onRoundStart, onRoundEnd, growthPerSecond } = {}) {
     this.tickMs = tickMs;
+    // roundDurationMs agora não controla mais o fim da rodada, mas é mantido por compatibilidade
     this.roundDurationMs = roundDurationMs;
     this.onTick = onTick;
     this.onRoundStart = onRoundStart;
@@ -14,6 +15,8 @@ export class CrashGame {
     this.mode = 'auto'; // 'auto' | 'manual'
     this.timer = null;
     this.running = false;
+    // Crescimento exponencial: por padrão, dobra a cada 10s (ln(2)/10)
+    this.growthPerSecond = growthPerSecond ?? (Math.log(2) / 10);
   }
 
   start() {
@@ -58,13 +61,13 @@ export class CrashGame {
 
     const start = Date.now();
     this.timer = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const base = 1 + (elapsed / this.roundDurationMs) * (this.crashAt === Number.POSITIVE_INFINITY ? 10 : this.crashAt);
-      this.currentMultiplier = Math.max(1, Math.floor((base) * 100) / 100);
+      const elapsedSec = (Date.now() - start) / 1000;
+      // Crescimento exponencial suave
+      const expValue = Math.exp(this.growthPerSecond * elapsedSec);
+      this.currentMultiplier = Math.max(1, Math.floor(expValue * 100) / 100);
 
-      const shouldEndByTime = this.mode === 'auto' && elapsed >= this.roundDurationMs;
       const shouldEndByCrash = this.mode === 'auto' && this.currentMultiplier >= this.crashAt;
-      if (shouldEndByTime || shouldEndByCrash) {
+      if (shouldEndByCrash) {
         const finalMultiplier = Math.min(this.currentMultiplier, this.crashAt);
         clearInterval(this.timer);
         const endTime = new Date().toISOString();

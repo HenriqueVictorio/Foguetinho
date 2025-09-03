@@ -105,8 +105,8 @@
       let currTick = { t: 0, m: 1 };
       let currTickTime = performance.now();
       let pathPoints = []; // pontos confirmados por tick
-      let crashed = false;
-      const roundSeconds = 10; // largura alvo
+  let crashed = false;
+  // A largura horizontal passa a ajustar dinamicamente conforme o tempo de rodada
 
       function resetRound() {
         roundStart = performance.now();
@@ -134,31 +134,59 @@
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(40, h-20); ctx.lineTo(w-10, h-20); ctx.moveTo(40, h-20); ctx.lineTo(40, 10);
-        ctx.stroke();
+        function render() {
 
         // escala
-        const maxM = Math.max(2, ...pathPoints.map(p=>p.m), currTick.m);
-        const now = performance.now();
-        const alpha = Math.min(1, (now - currTickTime) / 100); // interpola entre ticks (100ms)
-        const tipT = lastTick.t + (currTick.t - lastTick.t) * alpha;
-        const tipM = lastTick.m + (currTick.m - lastTick.m) * alpha;
+          // escala dinâmica
+          const now = performance.now();
+          const alpha = Math.min(1, (now - currTickTime) / 100); // interpola entre ticks (100ms)
+          const tipT = lastTick.t + (currTick.t - lastTick.t) * alpha;
+          const tipM = lastTick.m + (currTick.m - lastTick.m) * alpha;
 
-        function x(t){ return 40 + (w-60) * (t / roundSeconds); }
-        function y(m){ return (h-20) - (h-40) * (m-1) / (maxM-1); }
+          // janela em segundos: múltiplos de 10s (0,10,20,30...), no mínimo 10s
+          const lastT = pathPoints.length ? pathPoints[pathPoints.length-1].t : 0;
+          const tRef = Math.max(tipT, lastT);
+          const windowSec = Math.min(60, Math.max(10, Math.ceil(tRef / 10) * 10));
 
-        // caminho
-        const pts = [...pathPoints, { t: tipT, m: tipM }];
-        if (pts.length > 1) {
-          ctx.strokeStyle = crashed ? '#ff6b6b' : '#7cf3a0';
-          ctx.lineWidth = 2;
-          ctx.lineJoin = 'round';
-          ctx.lineCap = 'round';
+          // Y máximo: potências de 2 para lembrar o gráfico exponencial (x1,x2,x4,x8...)
+          const rawMaxM = Math.max(2, ...pathPoints.map(p=>p.m), tipM);
+          let pow = 1;
+          while (pow * 2 < rawMaxM) pow *= 2; // maior potência de 2 abaixo de rawMaxM
+          const maxM = Math.max(2, pow * 2); // próxima potência para dar folga
+
+          // eixos
+          ctx.strokeStyle = '#223064';
+          ctx.lineWidth = 1;
           ctx.beginPath();
+          ctx.moveTo(40, h-20); ctx.lineTo(w-10, h-20); // eixo X
+          ctx.moveTo(40, h-20); ctx.lineTo(40, 10);     // eixo Y
+          ctx.stroke();
+
+          // grades Y em potências de 2
+          ctx.strokeStyle = '#1b2448';
+          ctx.fillStyle = '#7a86b6';
+          ctx.font = '11px system-ui';
+          for (let m=1; m<=maxM; m*=2) {
+            const yy = y(m);
+            ctx.beginPath();
+            ctx.moveTo(40, yy); ctx.lineTo(w-10, yy);
+            ctx.stroke();
+            ctx.fillText('x'+m.toFixed(0), 8, Math.max(12, yy-2));
+          }
+
+          // grades X a cada 10s
+          for (let t=0; t<=windowSec; t+=10) {
+            const xx = x(t);
+            ctx.beginPath(); ctx.moveTo(xx, h-20); ctx.lineTo(xx, 10); ctx.stroke();
+            ctx.fillText(t+'s', Math.max(42, xx-8), h-6);
+          }
+          function x(t){ return 40 + (w-60) * (t / windowSec); }
+          function y(m){ const denom = Math.max(1, (maxM-1)); return (h-20) - (h-40) * (m-1) / denom; }
           ctx.moveTo(x(pts[0].t), y(pts[0].m));
           for (let i=1;i<pts.length;i++) ctx.lineTo(x(pts[i].t), y(pts[i].m));
           ctx.stroke();
 
-          // marcador na ponta
+            ctx.strokeStyle = crashed ? '#ff6b6b' : '#ff5277';
           const xf = x(pts[pts.length-1].t);
           const yf = y(pts[pts.length-1].m);
           ctx.fillStyle = crashed ? '#ff6b6b' : '#7cf3a0';
@@ -170,7 +198,7 @@
           // “quebra” no crash
           if (crashed) {
             ctx.strokeStyle = '#ff6b6b';
-            ctx.beginPath();
+            ctx.fillStyle = crashed ? '#ff6b6b' : '#ff5277';
             ctx.moveTo(xf-8, yf-8); ctx.lineTo(xf+8, yf+8);
             ctx.moveTo(xf-8, yf+8); ctx.lineTo(xf+8, yf-8);
             ctx.stroke();
