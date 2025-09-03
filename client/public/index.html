@@ -26,6 +26,7 @@
     <header>
       <div>Foguetinho</div>
       <div style="display:flex; gap:12px; align-items:center">
+        <div id="onlineBox" style="font-size:12px; opacity:.8"></div>
         <div id="serverBox" style="font-size:12px; opacity:.8"></div>
         <div id="userBox"></div>
         <button id="changeServerBtn" style="font-size:12px">Trocar servidor</button>
@@ -76,6 +77,17 @@
         const url = new URL(location.href);
         url.searchParams.set('server', cleaned);
         location.href = url.toString();
+      }
+
+      async function refreshOnline() {
+        try {
+          const r = await fetch(apiBase + '/api/online');
+          const d = await r.json();
+          if (r.ok) {
+            const el = document.getElementById('onlineBox');
+            if (el) el.textContent = `Online: ${d.online}`;
+          }
+        } catch {}
       }
       let user = null;
       let ws = null;
@@ -168,7 +180,7 @@
   document.getElementById('changeServerBtn').addEventListener('click', changeServer);
 
   showServer();
-  signup().then(() => { connectWS(); setInterval(refreshRanking, 5000); });
+  signup().then(() => { connectWS(); setInterval(refreshRanking, 5000); setInterval(refreshOnline, 5000); refreshOnline(); });
 
       // Registra Service Worker para tornar PWA instalável (requer HTTPS ou localhost)
       if ('serviceWorker' in navigator) {
