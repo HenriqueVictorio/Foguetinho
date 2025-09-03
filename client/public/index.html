@@ -180,11 +180,16 @@
         }
       }
 
+      let __lastFrame = 0;
       function render() {
         const w = cvs.width, h = cvs.height;
+        const nowTs = performance.now();
+        // throttle ~30fps
+        if (nowTs - __lastFrame < 33) { requestAnimationFrame(render); return; }
+        __lastFrame = nowTs;
         ctx.clearRect(0,0,w,h);
         // posição da ponta (interpola entre ticks)
-        const now = performance.now();
+        const now = nowTs;
         const alpha = Math.min(1, (now - currTickTime) / 100);
         const tipT = lastTick.t + (currTick.t - lastTick.t) * alpha;
         const tipM = lastTick.m + (currTick.m - lastTick.m) * alpha;
