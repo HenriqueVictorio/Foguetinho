@@ -53,6 +53,31 @@ app.get('/api/admin/validate', (req, res) => {
   return res.status(401).json({ error: 'Não autorizado' });
 });
 
+// Admin: modo do jogo e crash manual
+app.post('/api/admin/mode', (req, res) => {
+  const auth = req.headers['authorization'] || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  if (!token || !adminSessions.has(token)) return res.status(401).json({ error: 'Não autorizado' });
+  const { mode } = req.body || {};
+  if (mode !== 'auto' && mode !== 'manual') return res.status(400).json({ error: 'Modo inválido' });
+  game.setMode(mode);
+  return res.json({ mode });
+});
+
+app.post('/api/admin/force-crash', (req, res) => {
+  const auth = req.headers['authorization'] || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  if (!token || !adminSessions.has(token)) return res.status(401).json({ error: 'Não autorizado' });
+  game.forceCrash();
+  return res.json({ ok: true });
+});
+
+// Jogadores online (WebSocket)
+app.get('/api/online', (req, res) => {
+  const online = [...wss.clients].filter(c => c.readyState === 1).length;
+  res.json({ online });
+});
+
 const PORT = process.env.PORT || 3001;
 const server = app.listen(PORT, () => {
   console.log('Server listening on port', PORT);
