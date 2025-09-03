@@ -78,6 +78,11 @@ app.get('/api/online', (req, res) => {
   res.json({ online });
 });
 
+// Estado admin: modo e rodada atual
+app.get('/api/admin/state', (req, res) => {
+  res.json({ mode: game.mode, roundId: game.currentRoundId });
+});
+
 const PORT = process.env.PORT || 3001;
 const server = app.listen(PORT, () => {
   console.log('Server listening on port', PORT);
